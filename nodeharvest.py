@@ -47,6 +47,46 @@ class WeightedTree:
 
 
 class NodeHarvest:
+    """Implementation of the Node Harvest algorithm [1].
+
+    Node Harvest selects a small number of nodes from an ensemble of decision trees. The final decision is based on an
+    weighted average of these nodes.
+
+    Parameters
+    ----------
+    max_nodecount : integer or None, optional (default=None)
+        The maximum number of nodes to use from the forest. If set to None, all nodes are used. Nodes are taken from one
+        tree after another, until max_nodecount is reached.
+
+    max_interaction : integer or None, optional (default=None)
+        The maximum number of features that may contribute to a node.
+
+    solver : string, optional (default='scipy_robust')
+        Specify the solver to use for solving the optimization problem. Valid values are: 'scipy_robust', 'scipy_fast',
+        'cvx_robust', and 'cvx_fast'. The first two solvers are slower but only depend on scipy, while the last two
+        solvers are faster but depend on cvxopt [2]. The 'fast' version of each solver works in a space of reduced
+        dimensionality with strictly enforced constraints (equation 9 in [1]). The 'robust' version works solves the
+        original optimization problem (equation 7 in [1]) with slightly relaxed constraints.
+
+    tolerance : float, optional (default=1e-5)
+        Node weights below this value are set to 0.
+
+    Attributes
+    ----------
+    `estimators_`: list of WeightedTree
+        The collection of fitted sub-estimators.
+
+    `coverage_matrix_`: array of shape [n_samples, n_nodes]
+        Matrix that encodes which samples are covered by each node.
+
+
+    References
+    ----------
+
+    .. [1] N. Meinshausen. "Node Harvest". The Annals of Applied Statistics, 4(4), 2010
+
+    .. [2] http://cvxopt.org
+    """
     def __init__(self, max_nodecount=None, max_interaction=None, solver='scipy_robust', tolerance=1e-5,
                  **kwargs):
         self.w_root = None
