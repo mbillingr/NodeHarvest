@@ -8,8 +8,8 @@ This implementation is written in Python 3 and works on top of the
 [RandomForestRegressor](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html) 
 from [scikit-learn](http://scikit-learn.org/).
 For solving the quadratic optimization either
-[scipy.optimize.minimize](http://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html) or
-[cvxopt.solvers.qp] (http://cvxopt.org/userguide/coneprog.html#quadratic-programming) are available.
+[scipy.optimize.minimize](http://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html) (slow) or
+[cvxopt.solvers.qp] (http://cvxopt.org/userguide/coneprog.html#quadratic-programming) (preferred) are available.
 
 [1] [N. Meinshausen. "Node Harvest". *The Annals of Applied Statistics*, 4(4), 2010]
     (http://www.stats.ox.ac.uk/~meinshau/AOAS367.pdf)
