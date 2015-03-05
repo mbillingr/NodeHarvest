@@ -10,14 +10,14 @@ from sklearn.tree import _tree as ctree
 
 class WeightedTree:
     def __init__(self, tree, w, m, s=[]):
-        self.node_count = tree.node_count
-        self.children_left = tree.children_left
-        self.children_right = tree.children_right
-        self.feature = tree.feature
-        self.threshold = tree.threshold
-        self.weight = w
-        self.value = m
-        self.sample = s
+        self.node_count = np.asarray(tree.node_count)
+        self.children_left = np.asarray(tree.children_left)
+        self.children_right = np.asarray(tree.children_right)
+        self.feature = np.asarray(tree.feature)
+        self.threshold = np.asarray(tree.threshold)
+        self.weight = np.asarray(w)
+        self.value = np.asarray(m)
+        self.sample = np.asarray(s)
 
     def predict(self, x):
         """Compute weighted sum of node means for all nodes each sample in x falls into."""
@@ -44,6 +44,57 @@ class WeightedTree:
             node[left] = self.children_left[node[left]]
             node[right] = self.children_right[node[right]]
         return y, w
+
+    def prune(self):
+        """Remove all subtrees that only contain nodes with weight of 0."""
+        parent = np.ones(self.node_count, dtype=int) + self.node_count
+
+        idx_left = np.arange(self.node_count)[self.children_left != ctree.TREE_LEAF]
+        parent[self.children_left[idx_left]] = idx_left
+
+        idx_right = np.arange(self.node_count)[self.children_right != ctree.TREE_LEAF]
+        parent[self.children_right[idx_right]] = idx_right
+
+        cumulative = np.asarray(self.weight > 0, dtype=int)
+
+        queue = deque([0])
+        stack = deque([])
+
+        while queue:
+            node = queue.popleft()
+            stack.append(node)
+            if not self._isleaf(node):
+                queue.append(self.children_left[node])
+                queue.append(self.children_right[node])
+
+        while stack:
+            node = stack.pop()
+            if 0 < node < self.node_count:
+                cumulative[parent[node]] += cumulative[node]
+        # cumulative now contains the number of nonzero nodes for each subtree
+
+        keepmask = np.ones(self.node_count, dtype=bool)
+        keepmask[1:] = cumulative[parent[1:]] > 0  # never remove root node
+
+        tmp = np.arange(self.node_count)[keepmask]
+        newnodes = np.asarray([ctree.TREE_LEAF] * (self.node_count + 1), dtype=int)
+        newnodes[tmp] = np.arange(tmp.shape[0])
+
+        self.children_left = newnodes[self.children_left[keepmask]]
+        self.children_right = newnodes[self.children_right[keepmask]]
+        self.feature = self.feature[keepmask]
+        self.threshold = self.threshold[keepmask]
+        self.weight = self.weight[keepmask]
+        self.value = self.value[keepmask]
+        if self.sample.shape[0] > 0:
+            self.sample = self.sample[keepmask]
+        self.node_count = self.children_left.shape[0]
+
+    def _isleaf(self, node):
+        return self.children_left[node] == ctree.TREE_LEAF
+
+
+
 
 
 class NodeHarvest:
@@ -125,7 +176,9 @@ class NodeHarvest:
             tree_samples = np.zeros(tree.node_count)
             tree_samples[ni] = np.sum(self.coverage_matrix_, 0)[tree_indices == ti]
 
-            self.estimators_.append(WeightedTree(tree, tree_weights, tree_means, tree_samples))
+            wtree = WeightedTree(tree, tree_weights, tree_means, tree_samples)
+            wtree.prune()
+            self.estimators_.append(wtree)
 
     def predict(self, x):
         x = np.asarray(x)
@@ -457,16 +510,17 @@ def assert_weight_constraints(i, w, delta=1e-5, w0=0.001):
     assert_array_lesseq(1 - delta, np.dot(i, w))
 
 
-def generate_dummy_forest():
-    class DummyTree:
-        def __init__(self, l, r, f, t, v):
-            self.node_count = len(l)
-            self.children_left = np.asarray(l)
-            self.children_right = np.asarray(r)
-            self.feature = np.asarray(f)
-            self.threshold = np.asarray(t)
-            self.value = np.asarray(v)
+class DummyTree:
+    def __init__(self, l, r, f, t, v):
+        self.node_count = len(l)
+        self.children_left = np.asarray(l)
+        self.children_right = np.asarray(r)
+        self.feature = np.asarray(f)
+        self.threshold = np.asarray(t)
+        self.value = np.asarray(v)
 
+
+def generate_dummy_forest():
     # Tree 1 node indices
     # +-------+-------+   +-------+-------+   +---------------+
     # |       |       |   |       |       |   |               |
@@ -628,8 +682,27 @@ def test_utils():
     assert_array_equal(u, a[i, :])
 
 
+def test_wtree():
+    tree0 = DummyTree(l=[ 1,  2, -1, -1, -1,  3, -1, -1,  7, -1, -1,  9, 13, -1,  5],
+                      r=[12, 14, -1, -1, -1,  4, -1, -1,  6, -1, -1, 10, 11, -1,  8],
+                      f=[ 0,  1,  0,  1,  2,  0,  1,  0,  2,  0,  1,  1,  2,  1,  0],
+                      t=[ 8,  4,  0,  0,  0,  5,  0,  0,  7,  0,  0, 14, 12,  0,  6],
+                      v=[ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0])
+
+    tree = WeightedTree(tree0, w=[0.5,  0,  0.5,  0,  0,  0,  0,  0,  0,  0,  0.5,  0,  0.5,  0,  0],
+                        m = [0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0])
+
+    tree.prune()
+
+    assert_array_equal(sorted(tree.children_left), sorted([1, 2, 7, 3, ctree.TREE_LEAF, ctree.TREE_LEAF,
+                                                           ctree.TREE_LEAF, ctree.TREE_LEAF, ctree.TREE_LEAF]))
+
+    assert_array_equal(sorted(tree.children_right), sorted([6, 8, 5, 4, ctree.TREE_LEAF, ctree.TREE_LEAF,
+                                                           ctree.TREE_LEAF, ctree.TREE_LEAF, ctree.TREE_LEAF]))
+
 if __name__ == '__main__':
     test_utils()
     test_solvers()
     test_forest_interface()
     test_nodeharvest()
+    test_wtree()
