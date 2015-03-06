@@ -178,7 +178,8 @@ class NodeHarvest:
 
             wtree = WeightedTree(tree, tree_weights, tree_means, tree_samples)
             wtree.prune()
-            self.estimators_.append(wtree)
+            if not np.all(wtree.weight == 0):
+                self.estimators_.append(wtree)
 
     def predict(self, x):
         x = np.asarray(x)
